@@ -37,11 +37,6 @@ jobs:
           git config --global user.email "actions@users.noreply.github.com"
           git config --global color.ui false
 
-      # NOTE: branch name below matches the ci.android.com branch you were
-      # originally pointed at (android10-gsi). Google occasionally
-      # renames/retires these branches — if `repo init` 404s, check
-      # https://android.googlesource.com/platform/manifest/+refs for the
-      # current Android 10 GSI branch name and swap it in below.
       - name: repo init (AOSP GSI manifest, Android 10)
         run: |
           mkdir -p "$HOME/aosp" && cd "$HOME/aosp"
@@ -51,9 +46,27 @@ jobs:
           # -g pdk restricts sync to the Platform Development Kit project
           # group -- the subset meant for exactly this (building
           # boot/ramdisk-level output without the full frameworks/apps
-          # tree). If the build later fails with "missing project X",
-          # that project's group needs to be added back in a
-          # local_manifest (see repo docs on <project groups="">).
+          # tree).
+
+      # Soong scans EVERY Android.bp in the synced tree, not just the ones
+      # our target needs -- so a project that's present but whose
+      # module-type-defining counterpart got left out of the `pdk` group
+      # will break the whole build. Each entry here is one such case,
+      # found by running the build and reading the error. To add another:
+      # append another <remove-project name="platform/PATH" /> line below.
+      - name: Trim projects Soong can't resolve
+        run: |
+          mkdir -p "$HOME/aosp/.repo/local_manifests"
+          cat > "$HOME/aosp/.repo/local_manifests/trim.xml" <<'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <manifest>
+            <!-- atest needs platform/tools/tradefederation (not synced by
+                 -g pdk) for its "tradefed_binary_host" module type; we
+                 don't need atest to build a ramdisk, so drop it instead
+                 of pulling in all of tradefed's dependency chain. -->
+            <remove-project name="platform/tools/asuite" />
+          </manifest>
+          EOF
 
       - name: repo sync
         run: |
