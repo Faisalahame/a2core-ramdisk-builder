@@ -90,6 +90,7 @@ jobs:
           cd "$HOME/aosp"
           source build/envsetup.sh
           lunch aosp_arm_ab-userdebug
+          export ALLOW_MISSING_DEPENDENCIES=true
           make ramdisk -j"$(nproc)"
 
       - name: Locate output
