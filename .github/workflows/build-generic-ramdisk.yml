@@ -6,7 +6,7 @@ on:
 jobs:
   build-ramdisk:
     runs-on: ubuntu-22.04
-    timeout-minutes: 350
+    timeout-minutes: 350   # GitHub's hard cap is 360 for a single job
     steps:
       - name: Free up disk space
         run: |
@@ -15,7 +15,6 @@ jobs:
             /usr/local/share/boost "$AGENT_TOOLSDIRECTORY"
           sudo docker image prune --all --force || true
           df -h
-
       - name: Install AOSP host build dependencies
         run: |
           sudo apt-get update
@@ -23,83 +22,63 @@ jobs:
             zlib1g-dev libc6-dev-i386 x11proto-core-dev libx11-dev lib32z1-dev \
             libgl1-mesa-dev libxml2-utils xsltproc unzip fontconfig python3 \
             openjdk-8-jdk bc rsync
-
       - name: Install repo tool
         run: |
           mkdir -p "$HOME/bin"
           curl -s https://storage.googleapis.com/git-repo-downloads/repo > "$HOME/bin/repo"
           chmod a+x "$HOME/bin/repo"
           echo "$HOME/bin" >> "$GITHUB_PATH"
-
       - name: Configure git identity (repo tool requires this)
         run: |
           git config --global user.name "gh-actions"
           git config --global user.email "actions@users.noreply.github.com"
           git config --global color.ui false
-
       - name: repo init (AOSP GSI manifest, Android 10)
         run: |
           mkdir -p "$HOME/aosp" && cd "$HOME/aosp"
           repo init -u https://android.googlesource.com/platform/manifest \
             -b android10-gsi --depth=1 \
             -g pdk,-notdefault
-
+          # -g pdk restricts sync to the Platform Development Kit project
+          # group -- the subset meant for exactly this (building
+          # boot/ramdisk-level output without the full frameworks/apps
+          # tree).
+      # Soong scans EVERY Android.bp in the synced tree, not just the ones
+      # our target needs -- so a project that's present but whose
+      # module-type-defining counterpart got left out of the `pdk` group
+      # will break the whole build. Each entry here is one such case,
+      # found by running the build and reading the error. To add another:
+      # append another <remove-project name="platform/PATH" /> line below.
       - name: Trim projects Soong can't resolve
         run: |
           mkdir -p "$HOME/aosp/.repo/local_manifests"
           cat > "$HOME/aosp/.repo/local_manifests/trim.xml" <<'EOF'
           <?xml version="1.0" encoding="UTF-8"?>
           <manifest>
+            <!-- atest needs platform/tools/tradefederation (not synced by
+                 -g pdk) for its "tradefed_binary_host" module type; we
+                 don't need atest to build a ramdisk, so drop it instead
+                 of pulling in all of tradefed's dependency chain. -->
             <remove-project name="platform/tools/asuite" />
-            <remove-project name="platform/external/apache-http" />
-            <remove-project name="platform/packages/apps/TimeZoneUpdater" />
-            <remove-project name="platform/system/timezone" />
-            <remove-project name="platform/external/dexmaker" />
-            <remove-project name="platform/frameworks/opt/telephony" />
-            <remove-project name="platform/system/apex" />
-            <remove-project name="platform/prebuilts/sdk" />
           </manifest>
           EOF
-
       - name: repo sync
         run: |
           cd "$HOME/aosp"
           repo sync -c -j"$(nproc)" --no-tags --no-clone-bundle --force-sync
           df -h
-
-      - name: Nuke broken directories
-        run: |
-          cd "$HOME/aosp"
-          # Soong parses EVERY Android.bp in the tree. We don't need media, 
-          # OpenGL, HIDL interfaces, test suites, or adb to build the generic init ramdisk.
-          # We keep system/tools/hidl (the plugin) but delete the directories that use it
-          # to prevent "unrecognized module type" and "undefined module" errors.
-          rm -rf external/protobuf
-          rm -rf frameworks/av
-          rm -rf prebuilts/misc
-          rm -rf packages/apps/Test
-          rm -rf external/libchrome
-          rm -rf frameworks/hardware
-          rm -rf frameworks/native
-          rm -rf system/core/adb
-          rm -rf system/hardware/interfaces
-          rm -rf system/libhidl
-
       - name: Build ramdisk
         run: |
           cd "$HOME/aosp"
           source build/envsetup.sh
           lunch aosp_arm_ab-userdebug
-          export ALLOW_MISSING_DEPENDENCIES=true
           make ramdisk -j"$(nproc)"
-
       - name: Locate output
         run: |
           cd "$HOME/aosp"
           find out/target/product -maxdepth 2 -iname "ramdisk*.img" -exec ls -la {} \;
           mkdir -p /tmp/artifact
           find out/target/product -maxdepth 2 -iname "ramdisk*.img" -exec cp {} /tmp/artifact/ \;
-
       - name: Upload ramdisk.img
         uses: actions/upload-artifact@v4
         with:
