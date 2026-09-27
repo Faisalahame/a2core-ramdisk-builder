@@ -67,11 +67,11 @@ jobs:
           repo sync -c -j"$(nproc)" --no-tags --no-clone-bundle --force-sync
           df -h
 
-      - name: Nuke broken directories and patch adb tests
+      - name: Nuke broken directories
         run: |
           cd "$HOME/aosp"
           # Soong parses EVERY Android.bp in the tree. We don't need media, 
-          # OpenGL, HIDL tools, or test suites to build the generic init ramdisk.
+          # OpenGL, HIDL tools, test suites, or adb to build the generic init ramdisk.
           # Deleting them prevents Soong from choking on their missing dependencies.
           rm -rf external/protobuf
           rm -rf frameworks/av
@@ -81,10 +81,7 @@ jobs:
           rm -rf external/libchrome
           rm -rf frameworks/hardware
           rm -rf frameworks/native
-          
-          # The adb build file references a missing python test module. 
-          # We surgically remove just that broken test module block.
-          sed -i '/adb_integration_test_device/,/^}/d' system/core/adb/Android.bp
+          rm -rf system/core/adb
 
       - name: Build ramdisk
         run: |
