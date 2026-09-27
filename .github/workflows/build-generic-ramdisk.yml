@@ -1,0 +1,84 @@
+name: Build AOSP Android 10 Generic Ramdisk
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  build-ramdisk:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 350   # GitHub's hard cap is 360 for a single job
+    steps:
+      - name: Free up disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+            /opt/hostedtoolcache/CodeQL /usr/local/.ghcup /opt/az \
+            /usr/local/share/boost "$AGENT_TOOLSDIRECTORY"
+          sudo docker image prune --all --force || true
+          df -h
+
+      - name: Install AOSP host build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git-core gnupg flex bison build-essential zip curl \
+            zlib1g-dev libc6-dev-i386 x11proto-core-dev libx11-dev lib32z1-dev \
+            libgl1-mesa-dev libxml2-utils xsltproc unzip fontconfig python3 \
+            openjdk-8-jdk bc rsync
+
+      - name: Install repo tool
+        run: |
+          mkdir -p "$HOME/bin"
+          curl -s https://storage.googleapis.com/git-repo-downloads/repo > "$HOME/bin/repo"
+          chmod a+x "$HOME/bin/repo"
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+
+      - name: Configure git identity (repo tool requires this)
+        run: |
+          git config --global user.name "gh-actions"
+          git config --global user.email "actions@users.noreply.github.com"
+          git config --global color.ui false
+
+      # NOTE: branch name below matches the ci.android.com branch you were
+      # originally pointed at (aosp-android10-gsi). Google occasionally
+      # renames/retires these branches — if `repo init` 404s, check
+      # https://android.googlesource.com/platform/manifest/+refs for the
+      # current Android 10 GSI branch name and swap it in below.
+      - name: repo init (AOSP GSI manifest, Android 10)
+        run: |
+          mkdir -p "$HOME/aosp" && cd "$HOME/aosp"
+          repo init -u https://android.googlesource.com/platform/manifest \
+            -b aosp-android10-gsi --depth=1 \
+            -g pdk,-notdefault
+          # -g pdk restricts sync to the Platform Development Kit project
+          # group -- the subset meant for exactly this (building
+          # boot/ramdisk-level output without the full frameworks/apps
+          # tree). If the build later fails with "missing project X",
+          # that project's group needs to be added back in a
+          # local_manifest (see repo docs on <project groups="">).
+
+      - name: repo sync
+        run: |
+          cd "$HOME/aosp"
+          repo sync -c -j"$(nproc)" --no-tags --no-clone-bundle --force-sync
+          df -h
+
+      - name: Build ramdisk
+        run: |
+          cd "$HOME/aosp"
+          source build/envsetup.sh
+          lunch aosp_arm_ab-userdebug
+          make ramdisk -j"$(nproc)"
+
+      - name: Locate output
+        run: |
+          cd "$HOME/aosp"
+          find out/target/product -maxdepth 2 -iname "ramdisk*.img" -exec ls -la {} \;
+          mkdir -p /tmp/artifact
+          find out/target/product -maxdepth 2 -iname "ramdisk*.img" -exec cp {} /tmp/artifact/ \;
+
+      - name: Upload ramdisk.img
+        uses: actions/upload-artifact@v4
+        with:
+          name: aosp10-generic-ramdisk
+          path: /tmp/artifact/*
+          retention-days: 14
+          if-no-files-found: error
