@@ -72,6 +72,11 @@ jobs:
           cd "$HOME/aosp"
           source build/envsetup.sh
           lunch aosp_arm_ab-userdebug
+<<<<<<< HEAD
+=======
+          export ALLOW_MISSING_DEPENDENCIES=true
+          export ALLOW_MISSING_DEPENDENCIES=true
+>>>>>>> 7cd3fb4 (Set ALLOW_MISSING_DEPENDENCIES for partial pdk tree)
           make ramdisk -j"$(nproc)"
       - name: Locate output
         run: |
