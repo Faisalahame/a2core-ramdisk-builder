@@ -94,6 +94,7 @@ jobs:
           rm -rf system/hardware/interfaces
           rm -rf system/libhidl
           rm -rf frameworks/opt/car/setupwizard
+          rm -rf test/vts
 
       - name: Build ramdisk
         run: |
