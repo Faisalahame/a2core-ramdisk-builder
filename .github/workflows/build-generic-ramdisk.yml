@@ -71,17 +71,19 @@ jobs:
         run: |
           cd "$HOME/aosp"
           # Soong parses EVERY Android.bp in the tree. We don't need media, 
-          # OpenGL, HIDL tools, test suites, or adb to build the generic init ramdisk.
-          # Deleting them prevents Soong from choking on their missing dependencies.
+          # OpenGL, HIDL interfaces, test suites, or adb to build the generic init ramdisk.
+          # We keep system/tools/hidl (the plugin) but delete the directories that use it
+          # to prevent "unrecognized module type" and "undefined module" errors.
           rm -rf external/protobuf
           rm -rf frameworks/av
           rm -rf prebuilts/misc
-          rm -rf system/tools/hidl
           rm -rf packages/apps/Test
           rm -rf external/libchrome
           rm -rf frameworks/hardware
           rm -rf frameworks/native
           rm -rf system/core/adb
+          rm -rf system/hardware/interfaces
+          rm -rf system/libhidl
 
       - name: Build ramdisk
         run: |
