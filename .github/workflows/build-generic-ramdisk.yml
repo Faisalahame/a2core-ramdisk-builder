@@ -15,6 +15,7 @@ jobs:
             /usr/local/share/boost "$AGENT_TOOLSDIRECTORY"
           sudo docker image prune --all --force || true
           df -h
+
       - name: Install AOSP host build dependencies
         run: |
           sudo apt-get update
@@ -22,17 +23,20 @@ jobs:
             zlib1g-dev libc6-dev-i386 x11proto-core-dev libx11-dev lib32z1-dev \
             libgl1-mesa-dev libxml2-utils xsltproc unzip fontconfig python3 \
             openjdk-8-jdk bc rsync
+
       - name: Install repo tool
         run: |
           mkdir -p "$HOME/bin"
           curl -s https://storage.googleapis.com/git-repo-downloads/repo > "$HOME/bin/repo"
           chmod a+x "$HOME/bin/repo"
           echo "$HOME/bin" >> "$GITHUB_PATH"
+
       - name: Configure git identity (repo tool requires this)
         run: |
           git config --global user.name "gh-actions"
           git config --global user.email "actions@users.noreply.github.com"
           git config --global color.ui false
+
       - name: repo init (AOSP GSI manifest, Android 10)
         run: |
           mkdir -p "$HOME/aosp" && cd "$HOME/aosp"
@@ -43,6 +47,7 @@ jobs:
           # group -- the subset meant for exactly this (building
           # boot/ramdisk-level output without the full frameworks/apps
           # tree).
+
       # Soong scans EVERY Android.bp in the synced tree, not just the ones
       # our target needs -- so a project that's present but whose
       # module-type-defining counterpart got left out of the `pdk` group
@@ -62,28 +67,55 @@ jobs:
             <remove-project name="platform/tools/asuite" />
           </manifest>
           EOF
+
       - name: repo sync
         run: |
           cd "$HOME/aosp"
           repo sync -c -j"$(nproc)" --no-tags --no-clone-bundle --force-sync
           df -h
+
+      - name: Nuke broken directories
+        run: |
+          cd "$HOME/aosp"
+          # Soong parses EVERY Android.bp in the tree. We don't need media,
+          # OpenGL, HIDL interfaces, test suites, or adb to build the
+          # generic init ramdisk. We keep system/tools/hidl (the codegen
+          # plugin itself) but delete the directories that USE it, so its
+          # consumers stop throwing "unrecognized module type" /
+          # "undefined module" errors.
+          rm -rf external/protobuf
+          rm -rf frameworks/av
+          rm -rf prebuilts/misc
+          rm -rf packages/apps/Test
+          rm -rf external/libchrome
+          rm -rf frameworks/hardware
+          rm -rf frameworks/native
+          rm -rf system/core/adb
+          rm -rf system/hardware/interfaces
+          rm -rf system/libhidl
+
       - name: Build ramdisk
         run: |
           cd "$HOME/aosp"
           source build/envsetup.sh
           lunch aosp_arm_ab-userdebug
-<<<<<<< HEAD
-=======
+          # Plenty of unrelated app/test/prebuilt-SDK Android.bp files still
+          # reference framework, framework-res, ext, android_stubs_current
+          # etc. from frameworks/base, which isn't in our pdk-restricted
+          # sync. This defers those "missing dependency" errors instead of
+          # failing the whole graph up front -- the AOSP-sanctioned way to
+          # build off a partial source tree (what `mm`/`tapas` set
+          # automatically for unbundled builds).
           export ALLOW_MISSING_DEPENDENCIES=true
-          export ALLOW_MISSING_DEPENDENCIES=true
->>>>>>> 7cd3fb4 (Set ALLOW_MISSING_DEPENDENCIES for partial pdk tree)
           make ramdisk -j"$(nproc)"
+
       - name: Locate output
         run: |
           cd "$HOME/aosp"
           find out/target/product -maxdepth 2 -iname "ramdisk*.img" -exec ls -la {} \;
           mkdir -p /tmp/artifact
           find out/target/product -maxdepth 2 -iname "ramdisk*.img" -exec cp {} /tmp/artifact/ \;
+
       - name: Upload ramdisk.img
         uses: actions/upload-artifact@v4
         with:
