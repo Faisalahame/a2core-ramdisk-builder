@@ -110,11 +110,16 @@ jobs:
           # build off a partial source tree (what `mm`/`tapas` set
           # automatically for unbundled builds).
           export ALLOW_MISSING_DEPENDENCIES=true
-          make ramdisk -j"$(nproc)"
+          make ramdisk init -j"$(nproc)"
 
       - name: Locate output
         run: |
           cd "$HOME/aosp"
+          echo "=== root dir contents (up to 3 levels) ==="
+          find out/target/product -maxdepth 1 -mindepth 1 -type d | while read p; do find "$p/root" -maxdepth 3 2>&1; done
+          echo "=== searching all of out/ for a compiled init binary ==="
+          find out -iname "init" -type f 2>&1
+          echo "=== ramdisk image(s) ==="
           find out/target/product -maxdepth 2 -iname "ramdisk*.img" -exec ls -la {} \;
           mkdir -p /tmp/artifact
           find out/target/product -maxdepth 2 -iname "ramdisk*.img" -exec cp {} /tmp/artifact/ \;
