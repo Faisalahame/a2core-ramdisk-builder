@@ -50,12 +50,7 @@ jobs:
           cat > "$HOME/aosp/.repo/local_manifests/trim.xml" <<'EOF'
           <?xml version="1.0" encoding="UTF-8"?>
           <manifest>
-            <!-- Drop atest (needs tradefed, not in pdk) -->
             <remove-project name="platform/tools/asuite" />
-            
-            <!-- Drop projects that depend on full framework modules (framework-res, 
-                 android_stubs_current, ext, etc.) which are excluded from the pdk group.
-                 None of these are needed to build the generic ramdisk (init + init.rc). -->
             <remove-project name="platform/external/apache-http" />
             <remove-project name="platform/packages/apps/TimeZoneUpdater" />
             <remove-project name="platform/system/timezone" />
@@ -71,6 +66,25 @@ jobs:
           cd "$HOME/aosp"
           repo sync -c -j"$(nproc)" --no-tags --no-clone-bundle --force-sync
           df -h
+
+      - name: Nuke broken directories and patch adb tests
+        run: |
+          cd "$HOME/aosp"
+          # Soong parses EVERY Android.bp in the tree. We don't need media, 
+          # OpenGL, HIDL tools, or test suites to build the generic init ramdisk.
+          # Deleting them prevents Soong from choking on their missing dependencies.
+          rm -rf external/protobuf
+          rm -rf frameworks/av
+          rm -rf prebuilts/misc
+          rm -rf system/tools/hidl
+          rm -rf packages/apps/Test
+          rm -rf external/libchrome
+          rm -rf frameworks/hardware
+          rm -rf frameworks/native
+          
+          # The adb build file references a missing python test module. 
+          # We surgically remove just that broken test module block.
+          sed -i '/adb_integration_test_device/,/^}/d' system/core/adb/Android.bp
 
       - name: Build ramdisk
         run: |
