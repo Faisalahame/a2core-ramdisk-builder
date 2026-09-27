@@ -58,7 +58,7 @@ jobs:
                  None of these are needed to build the generic ramdisk (init + init.rc). -->
             <remove-project name="platform/external/apache-http" />
             <remove-project name="platform/packages/apps/TimeZoneUpdater" />
-            <remove-project name="platform/system/timezone/distro/installer" />
+            <remove-project name="platform/system/timezone" />
             <remove-project name="platform/external/dexmaker" />
             <remove-project name="platform/frameworks/opt/telephony" />
             <remove-project name="platform/system/apex" />
