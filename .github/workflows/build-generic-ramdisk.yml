@@ -38,7 +38,7 @@ jobs:
           git config --global color.ui false
 
       # NOTE: branch name below matches the ci.android.com branch you were
-      # originally pointed at (aosp-android10-gsi). Google occasionally
+      # originally pointed at (android10-gsi). Google occasionally
       # renames/retires these branches — if `repo init` 404s, check
       # https://android.googlesource.com/platform/manifest/+refs for the
       # current Android 10 GSI branch name and swap it in below.
@@ -46,7 +46,7 @@ jobs:
         run: |
           mkdir -p "$HOME/aosp" && cd "$HOME/aosp"
           repo init -u https://android.googlesource.com/platform/manifest \
-            -b aosp-android10-gsi --depth=1 \
+            -b android10-gsi --depth=1 \
             -g pdk,-notdefault
           # -g pdk restricts sync to the Platform Development Kit project
           # group -- the subset meant for exactly this (building
